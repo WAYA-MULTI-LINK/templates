@@ -70,17 +70,24 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v3
+
       - name: Set up Kaniko
         run: |
           mkdir -p /kaniko/.docker
           echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"username\":\"${{ secrets.DOCKER_USERNAME }}\",\"password\":\"${{ secrets.DOCKER_PASSWORD }}\"}}}" > /kaniko/.docker/config.json
+
       - name: Build and push Docker image
         run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          BRANCH_NAME="${{ github.ref_name }}"
+          FULL_IMAGE_NAME="${{ inputs.image_name }}/microservice"
+          TAG="${REPO_NAME}-${BRANCH_NAME}-${{ github.sha }}"
+
           /kaniko/executor \
             --context "${{ github.workspace }}" \
             --dockerfile "${{ github.workspace }}/Dockerfile" \
-            --destination "${{ inputs.image_name }}:${{ inputs.image_tag }}-${{ github.sha }}" \
-            --destination "${{ inputs.image_name }}:${{ inputs.image_tag }}-latest"
+            --destination "${FULL_IMAGE_NAME}:${TAG}" \
+            --destination "${FULL_IMAGE_NAME}:${REPO_NAME}-${BRANCH_NAME}-latest"
 
   helm_update:
     runs-on: ubuntu-latest
@@ -90,20 +97,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git yq
+
       - name: Clone Helm charts repository
         run: git clone https://${{ secrets.GH_PAT }}@github.com/WAYA-MULTI-LINK/waya-helm-charts.git
+
       - name: Update values file
         run: |
           cd waya-helm-charts
           git checkout main
           git pull origin main
+
           FILE_PATH="./microservices/${{ github.event.repository.name }}/${{ inputs.environment }}-values.yaml"
+          REPO_NAME="${{ github.event.repository.name }}"
+          BRANCH_NAME="${{ github.ref_name }}"
+          TAG="${REPO_NAME}-${BRANCH_NAME}-${{ github.sha }}"
+          IMAGE_REPO="${{ inputs.image_name }}/microservice"
+
           if [ -f "$FILE_PATH" ]; then
-            yq e -i ".application.image.repository = \"${{ inputs.image_name }}:${{ inputs.image_tag }}-${{ github.sha }}\"" "$FILE_PATH"
+            yq e -i ".application.image.repository = \"${IMAGE_REPO}:${TAG}\"" "$FILE_PATH"
             git config --global user.name "CI Bot"
             git config --global user.email "ci-bot@alerzo.com"
             git add "$FILE_PATH"
-            git commit -m "Update Docker image tag to ${{ inputs.image_name }}:${{ inputs.image_tag }}-${{ github.sha }}"
+            git commit -m "Update Docker image tag to ${IMAGE_REPO}:${TAG}"
             git push https://${{ secrets.GH_PAT }}@github.com/WAYA-MULTI-LINK/waya-helm-charts.git HEAD:main
           else
             echo "File does not exist: $FILE_PATH"
@@ -119,6 +134,7 @@ jobs:
           curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x argocd
           sudo mv argocd /usr/local/bin/
+
       - name: Login to ArgoCD
         env:
           ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
@@ -129,6 +145,7 @@ jobs:
             --username "$ARGOCD_USERNAME" \
             --password "$ARGOCD_PASSWORD" \
             --grpc-web --insecure
+
       - name: Sync application
         run: |
           TARGET_APP="${{ github.event.repository.name }}-${{ inputs.environment }}"
