@@ -85,7 +85,7 @@ jobs:
           cd waya-helm-charts
           git checkout main
           git pull origin main
-          echo "${{ env.CI_ENVIRONMENT_NAME }}" ${{ env.CI_ENVIRONMENT_NAME }}
+          echo "CI_ENVIRONMENT_NAME: $CI_ENVIRONMENT_NAME"
 
           FILE_PATH="./microservices/${{ github.event.repository.name }}/${{ env.CI_ENVIRONMENT_NAME }}-values.yaml"
           REPO_NAME="${{ github.event.repository.name }}"
