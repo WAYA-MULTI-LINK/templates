@@ -97,7 +97,7 @@ jobs:
           IMAGE_REPO="${{ secrets.DOCKER_USERNAME }}/microservice"
 
           if [ -f "$FILE_PATH" ]; then
-            yq e -i ".application.image.repository = \"${IMAGE_REPO}:${TAG}\"" "$FILE_PATH"
+            yq -y -i ".application.image.repository = \"${IMAGE_REPO}:${TAG}\"" "$FILE_PATH"
             git config --global user.name "CI Bot"
             git config --global user.email "ci-bot@alerzo.com"
             git add "$FILE_PATH"
