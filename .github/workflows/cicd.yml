@@ -1,25 +1,14 @@
-name: CI Template
+name: CI Pipeline
 
 on:
-  workflow_call:
+  push:
+    branches: [main, development]
+  workflow_dispatch:
     inputs:
       CI_ENVIRONMENT_NAME:
+        description: "Environment to deploy to"
         required: true
-        type: string
-    secrets:
-      DOCKER_USERNAME:
-        required: true
-      DOCKER_PASSWORD:
-        required: true
-      GH_PAT:
-        required: true
-      ARGOCD_SERVER:
-        required: true
-      ARGO_PASSWORD:
-        required: true
-
-env:
-  NODE_ENV: test
+        default: "development"
 
 jobs:
   docker_build:
@@ -27,14 +16,10 @@ jobs:
     outputs:
       tag: ${{ steps.vars.outputs.tag }}
       image_repo: ${{ steps.vars.outputs.image_repo }}
-    env:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-      CI_ENVIRONMENT_NAME: ${{ inputs.CI_ENVIRONMENT_NAME }}
+      slug: ${{ steps.vars.outputs.slug }}
+
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -48,32 +33,26 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           TAG="${REPO_NAME}-${BRANCH_NAME}-${SHORT_SHA}"
 
+          # Create slugified repo name
+          REPO_SLUG=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
+
           echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_ENV
+          echo "REPO_SLUG=${REPO_SLUG}" >> $GITHUB_ENV
           echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
           echo "FULL_IMAGE_NAME=${FULL_IMAGE_NAME}" >> $GITHUB_ENV
           echo "TAG=${TAG}" >> $GITHUB_ENV
 
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "image_repo=${FULL_IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "slug=${REPO_SLUG}" >> $GITHUB_OUTPUT
 
-      - name: Login to DockerHub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ env.DOCKER_PASSWORD }}
+      - name: Log in to DockerHub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build and Push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.FULL_IMAGE_NAME }}:${{ env.TAG }}
-            ${{ env.FULL_IMAGE_NAME }}:${{ env.REPO_NAME }}-${{ env.BRANCH_NAME }}-latest
-          cache-from: type=registry,ref=${{ env.FULL_IMAGE_NAME }}:cache
-          cache-to: type=registry,ref=${{ env.FULL_IMAGE_NAME }}:cache,mode=max
-          build-args: |
-            BRANCH_NAME=${{ env.BRANCH_NAME }}
+      - name: Build and push Docker image
+        run: |
+          docker build -t ${{ env.FULL_IMAGE_NAME }}:${{ env.TAG }} .
+          docker push ${{ env.FULL_IMAGE_NAME }}:${{ env.TAG }}
 
   helm_update:
     runs-on: ubuntu-latest
@@ -82,61 +61,36 @@ jobs:
       CI_ENVIRONMENT_NAME: ${{ inputs.CI_ENVIRONMENT_NAME }}
       IMAGE_TAG: ${{ needs.docker_build.outputs.tag }}
       IMAGE_REPO: ${{ needs.docker_build.outputs.image_repo }}
+      REPO_SLUG: ${{ needs.docker_build.outputs.slug }}
+
     steps:
-      - name: Install dependencies
+      - uses: actions/checkout@v3
+
+      - name: Update Helm values
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git yq
+          FILE_PATH="./microservices/${REPO_SLUG}/${CI_ENVIRONMENT_NAME}-values.yaml"
+          echo "Updating $FILE_PATH with new image tag"
+          yq e -i ".image.repository = \"${IMAGE_REPO}\"" "$FILE_PATH"
+          yq e -i ".image.tag = \"${IMAGE_TAG}\"" "$FILE_PATH"
 
-      - name: Clone Helm charts repository
-        run: git clone https://${{ secrets.GH_PAT }}@github.com/WAYA-MULTI-LINK/waya-helm-charts.git
-
-      - name: Update values file
+      - name: Commit Helm values
         run: |
-          cd waya-helm-charts
-          git checkout main
-          git pull origin main
-
-          FILE_PATH="./microservices/${{ github.event.repository.name }}/${{ env.CI_ENVIRONMENT_NAME }}-values.yaml"
-
-          if [ -f "$FILE_PATH" ]; then
-            yq -y -i ".application.image.repository = \"${IMAGE_REPO}:${IMAGE_TAG}\"" "$FILE_PATH"
-            git config --global user.name "CI Bot"
-            git config --global user.email "ci-bot@alerzo.com"
-            git add "$FILE_PATH"
-            git commit -m "Update Docker image tag to ${IMAGE_REPO}:${IMAGE_TAG}"
-            git push https://${{ secrets.GH_PAT }}@github.com/WAYA-MULTI-LINK/waya-helm-charts.git HEAD:main
-          else
-            echo "File does not exist: $FILE_PATH"
-            exit 1
-          fi
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "github-actions"
+          git add microservices/${REPO_SLUG}/${CI_ENVIRONMENT_NAME}-values.yaml
+          git commit -m "chore: update image tag to ${IMAGE_TAG}" || echo "No changes to commit"
+          git push
 
   argocd_sync:
     runs-on: ubuntu-latest
-    needs: helm_update
+    needs: docker_build
     env:
       CI_ENVIRONMENT_NAME: ${{ inputs.CI_ENVIRONMENT_NAME }}
+      REPO_SLUG: ${{ needs.docker_build.outputs.slug }}
+
     steps:
-      - name: Install ArgoCD CLI
+      - name: Sync ArgoCD app
         run: |
-          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x argocd
-          sudo mv argocd /usr/local/bin/
-
-      - name: Login to ArgoCD
-        env:
-          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
-          ARGOCD_USERNAME: admin
-          ARGOCD_PASSWORD: ${{ secrets.ARGO_PASSWORD }}
-        run: |
-          argocd login "$ARGOCD_SERVER" \
-            --username "$ARGOCD_USERNAME" \
-            --password "$ARGOCD_PASSWORD" \
-            --grpc-web --insecure
-
-      - name: Sync application
-        run: |
-          TARGET_APP="${{ github.event.repository.name }}-${{ env.CI_ENVIRONMENT_NAME }}"
-          argocd app sync "$TARGET_APP" \
-            --server="${{ secrets.ARGOCD_SERVER }}" \
-            --grpc-web --insecure
+          TARGET_APP="${REPO_SLUG}-${CI_ENVIRONMENT_NAME}"
+          echo "Syncing $TARGET_APP"
+          argocd app sync "$TARGET_APP" --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} --server ${{ secrets.ARGOCD_SERVER }} --insecure
