@@ -1,12 +1,20 @@
 name: CI Pipeline
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       CI_ENVIRONMENT_NAME:
-        description: "Environment to deploy to"
         required: true
-        default: "development"
+        type: string
+    secrets:
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_PASSWORD:
+        required: true
+      ARGOCD_AUTH_TOKEN:
+        required: true
+      ARGOCD_SERVER:
+        required: true
 
 jobs:
   docker_build:
@@ -31,7 +39,6 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           TAG="${REPO_NAME}-${BRANCH_NAME}-${SHORT_SHA}"
 
-          # Create slugified repo name
           REPO_SLUG=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
 
           echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_ENV
@@ -75,7 +82,7 @@ jobs:
         run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "github-actions"
-          git add microservices/${REPO_SLUG}/${CI_ENVIRONMENT_NAME}-values.yaml
+          git add "$FILE_PATH"
           git commit -m "chore: update image tag to ${IMAGE_TAG}" || echo "No changes to commit"
           git push
 
@@ -91,4 +98,7 @@ jobs:
         run: |
           TARGET_APP="${REPO_SLUG}-${CI_ENVIRONMENT_NAME}"
           echo "Syncing $TARGET_APP"
-          argocd app sync "$TARGET_APP" --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} --server ${{ secrets.ARGOCD_SERVER }} --insecure
+          argocd app sync "$TARGET_APP" \
+            --auth-token ${{ secrets.ARGOCD_AUTH_TOKEN }} \
+            --server ${{ secrets.ARGOCD_SERVER }} \
+            --insecure
