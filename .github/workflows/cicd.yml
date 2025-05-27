@@ -89,7 +89,7 @@ jobs:
 
   argocd_sync:
     runs-on: ubuntu-latest
-    needs: helm_update
+    needs: docker_build
     # env:
     #   CI_ENVIRONMENT_NAME: ${{ inputs.CI_ENVIRONMENT_NAME }}
     #   REPO_SLUG: ${{ needs.docker_build.outputs.slug }}
