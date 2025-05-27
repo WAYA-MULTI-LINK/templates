@@ -70,32 +70,31 @@ jobs:
     needs: docker_build
     env:
       CI_ENVIRONMENT_NAME: ${{ inputs.CI_ENVIRONMENT_NAME }}
-      IMAGE_TAG: ${{ needs.docker_build.outputs.tag }}
       IMAGE_REPO: ${{ needs.docker_build.outputs.image_repo }}
       REPO_SLUG: ${{ needs.docker_build.outputs.slug }}
       GITHUB_PAT: ${{ secrets.WAYA_HELM_PAT }}
     steps:
-      - name: Checkout this repo (optional)
+      - name: Checkout this repo
         uses: actions/checkout@v3
 
-      - name: Clone waya-helm-charts repo
+      - name: Clone waya-helm-charts repo and update image repo
         run: |
           git clone https://kayodewaya:${GITHUB_PAT}@github.com/WAYA-MULTI-LINK/waya-helm-charts.git
           cd waya-helm-charts
 
           FILE_PATH="./helm/microservices/${REPO_SLUG}/${CI_ENVIRONMENT_NAME}-values.yaml"
-          echo "Updating $FILE_PATH with new application image values"
-          
+          echo "Updating $FILE_PATH with application.image.repository = ${IMAGE_REPO}"
+
+          yq e -i 'if .application == null then .application = {} else . end' "$FILE_PATH"
+          yq e -i 'if .application.image == null then .application.image = {} else . end' "$FILE_PATH"
           yq e -i ".application.image.repository = \"${IMAGE_REPO}\"" "$FILE_PATH"
-          yq e -i ".application.image.tag = \"${IMAGE_TAG}\"" "$FILE_PATH"
 
           git config --global user.email "github-actions@github.com"
           git config --global user.name "github-actions"
 
           git add "$FILE_PATH"
-          git commit -m "chore: update application image to ${IMAGE_TAG}" || echo "No changes to commit"
+          git commit -m "chore: update application.image.repository to ${IMAGE_REPO}" || echo "No changes to commit"
           git push origin main
-
 
   argocd_sync:
     runs-on: ubuntu-latest
