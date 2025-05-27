@@ -104,12 +104,8 @@ jobs:
           chmod +x /usr/local/bin/argocd
 
       - name: Login to ArgoCD
-        run: |
-          argocd login "${{ secrets.ARGOCD_SERVER }}" \
-            --username "admin" \
-            --password "${{ secrets.ARGOCD_PASSWORD }}" \
-            --grpc-web \
-            --insecure
+        run: argocd login argocd.dev.wayalinks.com --username admin --password WqUNi85pNUJ43A3q --grpc-web --insecure 
+
       - name: Check if ArgoCD app exists
         run: |
           TARGET_APP="${REPO_SLUG}-${CI_ENVIRONMENT_NAME}"
