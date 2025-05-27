@@ -89,7 +89,13 @@ jobs:
             exit 1
           fi
 
-          yq e -i "image.repository = \"${TAG}\"" "$FILE_PATH"
+          if [ ! -s "$FILE_PATH" ]; then
+            echo "YAML file not found or is empty: $FILE_PATH"
+            exit 1
+          fi
+
+          # Correct yq syntax
+          yq eval -i ".image.repository = \"${TAG}\"" "$FILE_PATH"
 
           git config --global user.email "github-actions@github.com"
           git config --global user.name "github-actions"
@@ -97,6 +103,7 @@ jobs:
           git add "$FILE_PATH"
           git commit -m "chore: update image.repository to ${TAG}" || echo "No changes to commit"
           git push origin main
+
 
   argocd_sync:
     runs-on: ubuntu-latest
