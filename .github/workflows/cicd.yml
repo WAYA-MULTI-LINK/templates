@@ -77,7 +77,7 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v3
 
-      - name: Clone waya-helm-charts repo and update image repo
+      - name: Clone waya-helm-charts repo and update application.image.repository
         run: |
           git clone https://kayodewaya:${GITHUB_PAT}@github.com/WAYA-MULTI-LINK/waya-helm-charts.git
           cd waya-helm-charts
@@ -85,9 +85,7 @@ jobs:
           FILE_PATH="./helm/microservices/${REPO_SLUG}/${CI_ENVIRONMENT_NAME}-values.yaml"
           echo "Updating $FILE_PATH with application.image.repository = ${IMAGE_REPO}"
 
-          yq e -i 'if .application == null then .application = {} else . end' "$FILE_PATH"
-          yq e -i 'if .application.image == null then .application.image = {} else . end' "$FILE_PATH"
-          yq e -i ".application.image.repository = \"${IMAGE_REPO}\"" "$FILE_PATH"
+          yq e -i '.application.image.repository = strenv(IMAGE_REPO)' "$FILE_PATH"
 
           git config --global user.email "github-actions@github.com"
           git config --global user.name "github-actions"
@@ -95,6 +93,7 @@ jobs:
           git add "$FILE_PATH"
           git commit -m "chore: update application.image.repository to ${IMAGE_REPO}" || echo "No changes to commit"
           git push origin main
+
 
   argocd_sync:
     runs-on: ubuntu-latest
