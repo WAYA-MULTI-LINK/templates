@@ -84,16 +84,16 @@ jobs:
           cd waya-helm-charts
 
           FILE_PATH="./helm/microservices/${REPO_SLUG}/${CI_ENVIRONMENT_NAME}-values.yaml"
-          echo "Updating $FILE_PATH with new image tag"
+          echo "Updating $FILE_PATH with new application image values"
           
-          yq e -i ".image.repository = \"${IMAGE_REPO}\"" "$FILE_PATH"
-          yq e -i ".image.tag = \"${IMAGE_TAG}\"" "$FILE_PATH"
+          yq e -i ".application.image.repository = \"${IMAGE_REPO}\"" "$FILE_PATH"
+          yq e -i ".application.image.tag = \"${IMAGE_TAG}\"" "$FILE_PATH"
 
           git config --global user.email "github-actions@github.com"
           git config --global user.name "github-actions"
 
           git add "$FILE_PATH"
-          git commit -m "chore: update image tag to ${IMAGE_TAG}" || echo "No changes to commit"
+          git commit -m "chore: update application image to ${IMAGE_TAG}" || echo "No changes to commit"
           git push origin main
 
 
