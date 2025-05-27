@@ -96,6 +96,9 @@ jobs:
     #   ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
     #   ARGOCD_USERNAME: ${{ secrets.ARGOCD_USERNAME }}
     #   ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+    env:
+      CI_ENVIRONMENT_NAME: ${{ inputs.CI_ENVIRONMENT_NAME }}
+      REPO_SLUG: ${{ needs.docker_build.outputs.slug }}
 
     steps:
       - name: Install ArgoCD CLI
