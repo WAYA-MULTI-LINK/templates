@@ -72,22 +72,29 @@ jobs:
       REPO_SLUG: ${{ needs.docker_build.outputs.slug }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout this repo (optional, if needed)
+        uses: actions/checkout@v3
 
-      - name: Update Helm values
+      - name: Clone waya-helm-charts repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Or a personal access token if needed
         run: |
+          git clone https://github.com/WAYA-MULTI-LINK/waya-helm-charts.git
+          cd waya-helm-charts
+
           FILE_PATH="./helm/microservices/${REPO_SLUG}/${CI_ENVIRONMENT_NAME}-values.yaml"
           echo "Updating $FILE_PATH with new image tag"
+          
           yq e -i ".image.repository = \"${IMAGE_REPO}\"" "$FILE_PATH"
           yq e -i ".image.tag = \"${IMAGE_TAG}\"" "$FILE_PATH"
 
-      - name: Commit Helm values
-        run: |
           git config --global user.email "github-actions@github.com"
           git config --global user.name "github-actions"
+
           git add "$FILE_PATH"
           git commit -m "chore: update image tag to ${IMAGE_TAG}" || echo "No changes to commit"
           git push
+
 
 
   argocd_sync:
