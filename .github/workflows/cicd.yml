@@ -109,10 +109,12 @@ jobs:
       - name: Check if ArgoCD app exists
         run: |
           TARGET_APP="${REPO_SLUG}-${CI_ENVIRONMENT_NAME}"
+          echo "Checking ArgoCD app: $TARGET_APP"
           if ! argocd app get "$TARGET_APP" > /dev/null 2>&1; then
             echo "ERROR: ArgoCD app $TARGET_APP does not exist"
             exit 1
           fi
+
 
 #  argocd_sync:
 #     runs-on: ubuntu-latest
