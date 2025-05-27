@@ -77,15 +77,22 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@v3
 
-      - name: Clone waya-helm-charts repo and update application.image.repository
+      - name: Clone waya-helm-charts repo
         run: |
           git clone https://kayodewaya:${GITHUB_PAT}@github.com/WAYA-MULTI-LINK/waya-helm-charts.git
           cd waya-helm-charts
 
           FILE_PATH="./helm/microservices/${REPO_SLUG}/${CI_ENVIRONMENT_NAME}-values.yaml"
-          echo "Updating $FILE_PATH with application.image.repository = ${IMAGE_REPO}"
+          echo "Updating $FILE_PATH with new image repository"
 
-          yq e -i '.application.image.repository = strenv(IMAGE_REPO)' "$FILE_PATH"
+          # Safeguard against empty IMAGE_REPO
+          if [ -z "${IMAGE_REPO}" ]; then
+            echo "IMAGE_REPO is empty. Failing the job."
+            exit 1
+          fi
+
+          # Update only application.image.repository
+          yq e -i "application.image.repository = \"${IMAGE_REPO}\"" "$FILE_PATH"
 
           git config --global user.email "github-actions@github.com"
           git config --global user.name "github-actions"
